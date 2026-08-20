@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Portfolio Control — Project Monitoring Dashboard</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+
+  <!-- React & Babel via CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 0; background: #F5F6F8; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useCallback } = React;
+
+    const T = {
+      bg: "#F5F6F8", sidebar: "#0E1626", sidebarSub: "#8B97AB", panel: "#FFFFFF",
+      ink: "#0E1626", sub: "#64748B", faint: "#94A3B8", border: "#E7EAEF",
+      accent: "#1F4BD8", accentSoft: "#EAEFFE",
+      onTrack: "#15803D", onTrackBg: "#E4F6EA",
+      risk: "#B45309", riskBg: "#FDF1DA",
+      late: "#C81E1E", lateBg: "#FCE6E6",
+      done: "#334155", doneBg: "#EDF0F4",
+    };
+
+    const STATUS = {
+      selesai:   { label: "Selesai",   c: T.done,    bg: T.doneBg },
+      ontrack:   { label: "On Track",  c: T.onTrack, bg: T.onTrackBg },
+      berisiko:  { label: "Berisiko",  c: T.risk,    bg: T.riskBg },
+      terlambat: { label: "Terlambat", c: T.late,    bg: T.lateBg },
+    };
+
+    const PRIORITY = {
+      P1: { label: "P1", c: "#C81E1E", bg: "#FCE6E6" },
+      P2: { label: "P2", c: "#B45309", bg: "#FDF1DA" },
+      P3: { label: "P3", c: "#475569", bg: "#EDF0F4" },
+    };
+
+    /* ---------- Helper Tanggal ---------- */
+    const startOfDay = (d) => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
+    const parseISO = (s) => (s ? startOfDay(new Date(s + "T00:00:00")) : null);
+    const daysBetween = (a, b) => Math.round((b - a) / 86400000);
+    const todayD = () => startOfDay(new Date());
+    const fmt = (s) => {
+      if (!s) return "—";
+      const d = new Date(s + "T00:00:00");
+      return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+    };
+    const uid = () => Math.random().toString(36).slice(2, 9);
+
+    /* ---------- Logika Status Task & Project ---------- */
+    function taskStatus(t) {
+      if ((t.progress ?? 0) >= 100) return "selesai";
+      const today = todayD();
+      const due = parseISO(t.due);
+      if (!due) return "ontrack";
+      const dToDue = daysBetween(today, due);
+      if (dToDue < 0) return "terlambat";
+      const start = parseISO(t.start);
+      if (start) {
+        const total = daysBetween(start, due);
+        const elapsed = daysBetween(start, today);
+        if (total > 0) {
+          const expected = Math.min(100, Math.max(0, (elapsed / total) * 100));
+          if ((t.progress ?? 0) + 15 < expected) return "berisiko";
+        }
+      }
+      if (dToDue <= 3 && (t.progress ?? 0) < 90) return "berisiko";
+      return "ontrack";
+    }
+
+    function projectHealth(p) {
+      const st = p.tasks.map(taskStatus);
+      if (st.length === 0) return "ontrack";
+      if (st.every((s) => s === "selesai")) return "selesai";
+      if (st.includes("terlambat")) return "terlambat";
+      if (st.includes("berisiko")) return "berisiko";
+      return "ontrack";
+    }
+    const projectProgress = (p) =>
+      p.tasks.length ? Math.round(p.tasks.reduce((a, t) => a + (t.progress ?? 0), 0) / p.tasks.length) : 0;
+
+    /* ---------- UI Elements ---------- */
+    const Chip = ({ s, size = 12 }) => {
+      const cfg = STATUS[s] || STATUS.ontrack;
+      return (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: cfg.bg, color: cfg.c, fontSize: size, fontWeight: 700, padding: "3px 9px", borderRadius: 20 }}>
+          <span style={{ width: 6, height: 6, borderRadius: 6, background: cfg.c }} /> {cfg.label}
+        </span>
+      );
+    };
+    const PChip = ({ p }) => {
+      const c = PRIORITY[p] || PRIORITY.P3;
+      return <span style={{ background: c.bg, color: c.c, fontSize: 11, fontWeight: 800, padding: "2px 7px", borderRadius: 5 }}>{c.label}</span>;
+    };
+    const Bar = ({ value, health }) => {
+      const cfg = STATUS[health] || STATUS.ontrack;
+      return (
+        <div style={{ background: "#EEF1F5", borderRadius: 20, height: 7, overflow: "hidden", width: "100%" }}>
+          <div style={{ width: `${value}%`, height: "100%", background: cfg.c, borderRadius: 20, transition: "width .5s ease" }} />
+        </div>
+      );
+    };
+
+    /* ---------- Komponen Utama (App) ---------- */
+    function App() {
+      const [projects, setProjects] = useState([]);
+      const [view, setView] = useState("portfolio");
+      const [filterStatus, setFilterStatus] = useState("all");
+      const [filterPic, setFilterPic] = useState("all");
+      const [modal, setModal] = useState(null);
+
+      // State Native File System API
+      const [fileHandle, setFileHandle] = useState(null);
+      const [fileName, setFileName] = useState("");
+      const [isModified, setIsModified] = useState(false);
+
+      // Buka & Hubungkan ke file data.json di Shared Folder
+      const openJsonFile = async () => {
+        try {
+          if (!window.showOpenFilePicker) {
+            alert("Browser Anda tidak mendukung Native File System API. Gunakan Google Chrome atau Microsoft Edge terbaru.");
+            return;
+          }
+          const [handle] = await window.showOpenFilePicker({
+            types: [{
+              description: 'JSON File',
+              accept: { 'application/json': ['.json'] }
+            }],
+            multiple: false
+          });
+
+          const file = await handle.getFile();
+          const contents = await file.text();
+          const data = JSON.parse(contents);
+
+          setFileHandle(handle);
+          setFileName(file.name);
+          setProjects(data);
+          setIsModified(false);
+        } catch (err) {
+          if (err.name !== 'AbortError') {
+            alert("Gagal membuka file: " + err.message);
+          }
+        }
+      };
+
+      // Overwrite / Simpan Langsung ke file data.json
+      const saveDirectToFile = async (currentProjects = projects) => {
+        if (!fileHandle) {
+          alert("Silakan hubungkan file data.json terlebih dahulu.");
+          return;
+        }
+        try {
+          const writable = await fileHandle.createWritable();
+          await writable.write(JSON.stringify(currentProjects, null, 2));
+          await writable.close();
+          setIsModified(false);
+          alert("✅ Data berhasil diperbarui langsung ke " + fileName);
+        } catch (err) {
+          alert("❌ Gagal menyimpan file: " + err.message + "\nPastikan file tidak sedang dibuka/dikunci aplikasi lain.");
+        }
+      };
+
+      // Reload File
+      const reloadFile = async () => {
+        if (!fileHandle) return;
+        try {
+          const file = await fileHandle.getFile();
+          const contents = await file.text();
+          setProjects(JSON.parse(contents));
+          setIsModified(false);
+        } catch (err) {
+          alert("Gagal memuat ulang file: " + err.message);
+        }
+      };
+
+      const persist = (next) => {
+        setProjects(next);
+        setIsModified(true);
+      };
+
+      const stats = useMemo(() => {
+        if (!projects) return null;
+        const tasks = projects.flatMap((p) => p.tasks.map((t) => ({ ...t, _pName: p.name, _pCode: p.code, _pid: p.id, _s: taskStatus(t) })));
+        const done = tasks.filter((t) => t._s === "selesai").length;
+        const late = tasks.filter((t) => t._s === "terlambat");
+        const risk = tasks.filter((t) => t._s === "berisiko");
+        const avg = tasks.length ? Math.round(tasks.reduce((a, t) => a + (t.progress ?? 0), 0) / tasks.length) : 0;
+        const dueSoon = tasks.filter((t) => {
+          if (t._s === "selesai") return false;
+          const due = parseISO(t.due); if (!due) return false;
+          const d = daysBetween(todayD(), due); return d >= 0 && d <= 7;
+        });
+        const alerts = tasks
+          .filter((t) => t._s === "terlambat" || t._s === "berisiko")
+          .sort((a, b) => (parseISO(a.due) || 0) - (parseISO(b.due) || 0));
+        return { tasks, done, late, risk, avg, dueSoon, alerts };
+      }, [projects]);
+
+      const activeProject = projects.find((p) => p.id === view);
+      const pics = [...new Set(projects.flatMap((p) => p.tasks.map((t) => t.pic)).filter(Boolean))];
+
+      const saveProject = (data) => {
+        if (data.id) persist(projects.map((p) => (p.id === data.id ? { ...p, ...data } : p)));
+        else persist([...projects, { ...data, id: uid(), tasks: [] }]);
+        setModal(null);
+      };
+      const delProject = (id) => { persist(projects.filter((p) => p.id !== id)); if (view === id) setView("portfolio"); setModal(null); };
+      const saveTask = (pid, task) => {
+        persist(projects.map((p) => {
+          if (p.id !== pid) return p;
+          const exists = p.tasks.some((t) => t.id === task.id);
+          return { ...p, tasks: exists ? p.tasks.map((t) => (t.id === task.id ? task : t)) : [...p.tasks, { ...task, id: uid() }] };
+        }));
+        setModal(null);
+      };
+      const delTask = (pid, tid) => persist(projects.map((p) => (p.id === pid ? { ...p, tasks: p.tasks.filter((t) => t.id !== tid) } : p)));
+      const setProgress = (pid, tid, val) =>
+        persist(projects.map((p) => (p.id === pid ? { ...p, tasks: p.tasks.map((t) => (t.id === tid ? { ...t, progress: val } : t)) } : p)));
+
+      return (
+        <div style={{ fontFamily: "'Inter',system-ui,sans-serif", background: T.bg, minHeight: "100vh", color: T.ink, display: "flex" }}>
+          <Style />
+
+          {/* SIDEBAR */}
+          <aside className="pm-side">
+            <div style={{ padding: "22px 20px 18px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 9, background: "linear-gradient(135deg,#1F4BD8,#4F7BFF)", display: "grid", placeItems: "center", fontWeight: 800, color: "#fff", fontSize: 15 }}>◱</div>
+                <div>
+                  <div style={{ color: "#fff", fontWeight: 800, fontSize: 14.5, fontFamily: "'Plus Jakarta Sans',sans-serif", lineHeight: 1.1 }}>Portfolio Control</div>
+                  <div style={{ color: T.sidebarSub, fontSize: 11, marginTop: 2 }}>Shared Folder Mode</div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ padding: "0 12px" }}>
+              <NavItem active={view === "portfolio"} onClick={() => setView("portfolio")} icon="▦" label="Ringkasan Portfolio" />
+              <div style={{ color: T.sidebarSub, fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", padding: "16px 12px 8px" }}>Project ({projects.length})</div>
+              {projects.map((p) => {
+                const h = projectHealth(p);
+                return (
+                  <button key={p.id} className={"pm-nav" + (view === p.id ? " on" : "")} onClick={() => setView(p.id)}>
+                    <span style={{ width: 7, height: 7, borderRadius: 7, background: STATUS[h].c, flexShrink: 0 }} />
+                    <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+                    <span style={{ fontSize: 10, color: T.sidebarSub, fontWeight: 700 }}>{projectProgress(p)}%</span>
+                  </button>
+                );
+              })}
+              <button className="pm-nav add" onClick={() => setModal({ type: "project" })}>＋ Tambah Project</button>
+            </div>
+
+            {/* KONTROL FILE */}
+            <div style={{ marginTop: "auto", padding: 14, borderTop: "1px solid rgba(255,255,255,.1)", display: "grid", gap: 8 }}>
+              {fileHandle ? (
+                <>
+                  <div style={{ color: "#4ADE80", fontSize: 11, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    📄 {fileName} {isModified && <span style={{ color: "#FBBF24" }}>(perlu disimpan)</span>}
+                  </div>
+                  <button className="pm-btn primary" style={{ width: "100%", fontSize: 12, background: isModified ? "#D97706" : "#1F4BD8" }} onClick={() => saveDirectToFile()}>
+                    💾 Overwrite / Simpan
+                  </button>
+                  <button className="pm-reset" onClick={reloadFile}>🔄 Reload File</button>
+                </>
+              ) : (
+                <button className="pm-btn primary" style={{ width: "100%", fontSize: 12 }} onClick={openJsonFile}>
+                  📂 Buka File data.json
+                </button>
+              )}
+            </div>
+          </aside>
+
+          {/* AREA UTAMA */}
+          <main style={{ flex: 1, minWidth: 0, padding: "26px 30px 60px" }}>
+            {!fileHandle && projects.length === 0 ? (
+              <div style={{ background: "#fff", border: `1px solid ${T.border}`, borderRadius: 12, padding: 40, textAlign: "center", marginTop: 40 }}>
+                <h2 style={{ marginTop: 0 }}>Selamat Datang di Portfolio Control</h2>
+                <p style={{ color: T.sub, maxWidth: 480, margin: "0 auto 20px" }}>
+                  Silakan buka/hubungkan file <b>data.json</b> di Shared Folder Anda untuk memulai dashboard.
+                </p>
+                <button className="pm-btn primary" style={{ fontSize: 14, padding: "10px 20px" }} onClick={openJsonFile}>
+                  📂 Hubungkan File data.json
+                </button>
+              </div>
+            ) : view === "portfolio" ? (
+              <Portfolio stats={stats} projects={projects} onOpen={setView} onAdd={() => setModal({ type: "project" })} />
+            ) : (
+              <ProjectView
+                project={activeProject} filterStatus={filterStatus} setFilterStatus={setFilterStatus}
+                filterPic={filterPic} setFilterPic={setFilterPic} pics={pics}
+                onEditProject={() => setModal({ type: "project", data: activeProject })}
+                onDeleteProject={() => setModal({ type: "delProject", id: activeProject.id, name: activeProject.name })}
+                onAddTask={() => setModal({ type: "task", pid: activeProject.id })}
+                onEditTask={(t) => setModal({ type: "task", pid: activeProject.id, data: t })}
+                onDeleteTask={delTask} onProgress={setProgress}
+              />
+            )}
+          </main>
+
+          {/* MODAL / DIALOG */}
+          {modal?.type === "project" && <ProjectModal data={modal.data} onSave={saveProject} onClose={() => setModal(null)} />}
+          {modal?.type === "task" && <TaskModal pid={modal.pid} data={modal.data} onSave={saveTask} onClose={() => setModal(null)} />}
+          {modal?.type === "delProject" && (
+            <Confirm title="Hapus project?" body={`"${modal.name}" beserta seluruh task-nya akan dihapus.`}
+              confirmLabel="Hapus project" onConfirm={() => delProject(modal.id)} onClose={() => setModal(null)} />
+          )}
+        </div>
+      );
+    }
+
+    function Portfolio({ stats, projects, onOpen, onAdd }) {
+      return (
+        <>
+          <Header title="Ringkasan Portfolio" sub={`${projects.length} project · ${stats.tasks.length} task aktif`}
+            action={<button className="pm-btn primary" onClick={onAdd}>＋ Project baru</button>} />
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(158px,1fr))", gap: 14, marginTop: 20 }}>
+            <Stat label="Progress Rata-rata" value={`${stats.avg}%`} tone="accent" />
+            <Stat label="Task Selesai" value={`${stats.done}/${stats.tasks.length}`} tone="done" />
+            <Stat label="Berisiko" value={stats.risk.length} tone="risk" />
+            <Stat label="Terlambat" value={stats.late.length} tone="late" />
+            <Stat label="Deadline ≤ 7 hari" value={stats.dueSoon.length} tone="soon" />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.55fr) minmax(0,1fr)", gap: 20, marginTop: 20 }}>
+            <Panel title="Kesehatan Project" hint="Klik untuk detail">
+              <div style={{ display: "grid", gap: 4 }}>
+                {projects.map((p) => {
+                  const h = projectHealth(p), prog = projectProgress(p);
+                  return (
+                    <button key={p.id} className="pm-prow" onClick={() => onOpen(p.id)}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: 8, background: STATUS[h].c, flexShrink: 0 }} />
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 650, fontSize: 13.5 }}>{p.name}</div>
+                          <div style={{ fontSize: 11.5, color: T.faint, marginTop: 2 }}>{p.code} · {p.tasks.length} task</div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0, width: 190 }}>
+                        <Bar value={prog} health={h} />
+                        <span style={{ fontWeight: 800, fontSize: 13, width: 38, textAlign: "right" }}>{prog}%</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </Panel>
+
+            <Panel title="Pusat Perhatian" hint={`${stats.alerts.length} item`}>
+              {stats.alerts.length === 0 ? <Empty text="Tidak ada task berisiko." /> : (
+                <div style={{ display: "grid", gap: 2, maxHeight: 420, overflowY: "auto" }}>
+                  {stats.alerts.map((t) => (
+                    <button key={t.id} className="pm-alert" onClick={() => onOpen(t._pid)}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        <PChip p={t.priority} /><Chip s={t._s} size={11} />
+                      </div>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{t.name}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </Panel>
+          </div>
+        </>
+      );
+    }
+
+    function ProjectView({ project, filterStatus, setFilterStatus, filterPic, setFilterPic, pics, onEditProject, onDeleteProject, onAddTask, onEditTask, onDeleteTask, onProgress }) {
+      if (!project) return <Empty text="Project tidak ditemukan." />;
+      const h = projectHealth(project), prog = projectProgress(project);
+      let tasks = project.tasks.map((t) => ({ ...t, _s: taskStatus(t) }));
+      if (filterStatus !== "all") tasks = tasks.filter((t) => t._s === filterStatus);
+      if (filterPic !== "all") tasks = tasks.filter((t) => t.pic === filterPic);
+
+      return (
+        <>
+          <Header title={project.name} sub={`${project.code} · ${project.category}`}
+            action={
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="pm-btn" onClick={onEditProject}>✎ Edit Project</button>
+                <button className="pm-btn primary" onClick={onAddTask}>＋ Task Baru</button>
+              </div>
+            } 
+          />
+
+          <div style={{ margin: "20px 0 12px" }}><Bar value={prog} health={h} /></div>
+
+          <Panel noPad>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>{["Task", "PIC", "Prioritas", "Timeline (Mulai → Tenggat)", "Progress", "Status", "Aksi"].map((h, i) => (
+                  <th key={i} style={{ textAlign: "left", fontSize: 11, color: T.faint, padding: "12px 16px" }}>{h}</th>
+                ))}</tr>
+              </thead>
+              <tbody>
+                {tasks.length === 0 ? (
+                  <tr><td colSpan="7" style={{ textCenter: "center", padding: 20, color: T.faint }}>Belum ada task di project ini.</td></tr>
+                ) : (
+                  tasks.map((t) => (
+                    <tr key={t.id} className="pm-trow">
+                      <td style={td}>{t.name}</td>
+                      <td style={td}>{t.pic || "—"}</td>
+                      <td style={td}><PChip p={t.priority} /></td>
+                      <td style={td}>{fmt(t.start)} → {fmt(t.due)}</td>
+                      <td style={td}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <input type="range" min="0" max="100" step="5" value={t.progress ?? 0}
+                            onChange={(e) => onProgress(project.id, t.id, Number(e.target.value))} className="pm-range" />
+                          <span style={{ fontSize: 12, fontWeight: 600 }}>{t.progress ?? 0}%</span>
+                        </div>
+                      </td>
+                      <td style={td}><Chip s={t._s} /></td>
+                      <td style={{ ...td, textAlign: "right" }}>
+                        <button className="pm-icon" onClick={() => onEditTask(t)}>✎</button>
+                        <button className="pm-icon del" onClick={() => onDeleteTask(project.id, t.id)}>🗑</button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </Panel>
+        </>
+      );
+    }
+    const td = { padding: "13px 16px", borderBottom: `1px solid ${T.border}` };
+
+    function Header({ title, sub, action }) {
+      return (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 23, fontWeight: 800 }}>{title}</h1>
+            <div style={{ color: T.sub, fontSize: 13, marginTop: 4 }}>{sub}</div>
+          </div>
+          {action}
+        </div>
+      );
+    }
+    function Stat({ label, value }) {
+      return (
+        <div style={{ background: T.panel, border: `1px solid ${T.border}`, borderRadius: 12, padding: "16px" }}>
+          <div style={{ fontSize: 11, color: T.faint, textTransform: "uppercase" }}>{label}</div>
+          <div style={{ fontSize: 26, fontWeight: 800, marginTop: 4 }}>{value}</div>
+        </div>
+      );
+    }
+    function Panel({ title, children, noPad }) {
+      return (
+        <section style={{ background: T.panel, border: `1px solid ${T.border}`, borderRadius: 14 }}>
+          {title && <div style={{ padding: "15px 18px", borderBottom: `1px solid ${T.border}`, fontWeight: 700 }}>{title}</div>}
+          <div style={{ padding: noPad ? 0 : 18 }}>{children}</div>
+        </section>
+      );
+    }
+    const NavItem = ({ active, onClick, icon, label }) => (
+      <button className={"pm-nav" + (active ? " on" : "")} onClick={onClick}>
+        <span>{icon}</span><span>{label}</span>
+      </button>
+    );
+    const Empty = ({ text }) => <div style={{ textAlign: "center", color: T.faint, padding: 20 }}>{text}</div>;
+
+    function Shell({ children, onClose, title }) {
+      return (
+        <div className="pm-overlay" onMouseDown={onClose}>
+          <div className="pm-modal" onMouseDown={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14 }}>
+              <h3 style={{ margin: 0 }}>{title}</h3>
+              <button className="pm-x" onClick={onClose}>✕</button>
+            </div>
+            {children}
+          </div>
+        </div>
+      );
+    }
+    const Field = ({ label, children }) => (
+      <label style={{ display: "block", marginBottom: 12 }}>
+        <span style={{ display: "block", fontSize: 12, color: T.sub, marginBottom: 4 }}>{label}</span>
+        {children}
+      </label>
+    );
+
+    function ProjectModal({ data, onSave, onClose }) {
+      const [f, setF] = useState(data || { name: "", code: "", category: "Premises", owner: "" });
+      const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+      return (
+        <Shell title={data ? "Edit Project" : "Project Baru"} onClose={onClose}>
+          <Field label="Nama Project *"><input className="pm-in" value={f.name} onChange={set("name")} placeholder="Contoh: Fit-out Lantai 19" /></Field>
+          <Field label="Kode Project *"><input className="pm-in" value={f.code} onChange={set("code")} placeholder="Contoh: FITOUT-19" /></Field>
+          <Field label="Kategori"><input className="pm-in" value={f.category} onChange={set("category")} placeholder="Contoh: Premises / Risk Management" /></Field>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
+            <button className="pm-btn" onClick={onClose}>Batal</button>
+            <button className="pm-btn primary" onClick={() => onSave(f)}>Simpan Project</button>
+          </div>
+        </Shell>
+      );
+    }
+
+    /* MODAL TASK DENGAN INPUT TIMELINE LENGKAP */
+    function TaskModal({ pid, data, onSave, onClose }) {
+      const [f, setF] = useState(data || { 
+        name: "", 
+        pic: "", 
+        priority: "P2", 
+        start: "", 
+        due: "", 
+        progress: 0 
+      });
+
+      const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+
+      return (
+        <Shell title={data ? "Edit Task" : "Task Baru"} onClose={onClose}>
+          <Field label="Nama Task *">
+            <input className="pm-in" value={f.name} onChange={set("name")} placeholder="Masukkan deskripsi task..." />
+          </Field>
+          
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Field label="PIC">
+              <input className="pm-in" value={f.pic} onChange={set("pic")} placeholder="Nama PIC" />
+            </Field>
+            
+            <Field label="Prioritas">
+              <select className="pm-in" value={f.priority} onChange={set("priority")}>
+                <option value="P1">P1 (Tinggi)</option>
+                <option value="P2">P2 (Sedang)</option>
+                <option value="P3">P3 (Rendah)</option>
+              </select>
+            </Field>
+          </div>
+
+          {/* INPUT TIMELINE (Start Date & Due Date) */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Field label="Tanggal Mulai">
+              <input type="date" className="pm-in" value={f.start} onChange={set("start")} />
+            </Field>
+            
+            <Field label="Tanggal Selesai (Due Date)">
+              <input type="date" className="pm-in" value={f.due} onChange={set("due")} />
+            </Field>
+          </div>
+
+          <Field label={`Progress (${f.progress}%)`}>
+            <input type="range" min="0" max="100" step="5" value={f.progress} onChange={(e) => setF({ ...f, progress: Number(e.target.value) })} className="pm-range" style={{ width: "100%" }} />
+          </Field>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
+            <button className="pm-btn" onClick={onClose}>Batal</button>
+            <button className="pm-btn primary" onClick={() => onSave(pid, { id: data?.id, ...f })}>Simpan Task</button>
+          </div>
+        </Shell>
+      );
+    }
+
+    function Confirm({ title, body, confirmLabel, onConfirm, onClose }) {
+      return (
+        <Shell title={title} onClose={onClose}>
+          <p>{body}</p>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <button className="pm-btn" onClick={onClose}>Batal</button>
+            <button className="pm-btn danger" onClick={onConfirm}>{confirmLabel}</button>
+          </div>
+        </Shell>
+      );
+    }
+
+    function Style() {
+      return (
+        <style>{`
+        .pm-side { width: 250px; background: ${T.sidebar}; min-height: 100vh; display: flex; flex-direction: column; }
+        .pm-nav { width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: none; background: transparent; color: ${T.sidebarSub}; cursor: pointer; border-radius: 6px; }
+        .pm-nav:hover { background: rgba(255,255,255,.06); color: #fff; }
+        .pm-nav.on { background: rgba(79,123,255,.16); color: #fff; }
+        .pm-btn { border: 1px solid ${T.border}; background: #fff; padding: 8px 14px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+        .pm-btn.primary { background: ${T.accent}; color: #fff; border-color: ${T.accent}; }
+        .pm-btn.danger { color: ${T.late}; border-color: ${T.lateBg}; background: #fff; }
+        .pm-prow { width: 100%; display: flex; justify-content: space-between; padding: 10px; border: none; background: transparent; cursor: pointer; border-radius: 8px; }
+        .pm-prow:hover { background: #F7F8FA; }
+        .pm-alert { width: 100%; text-align: left; padding: 10px; border: none; background: transparent; cursor: pointer; }
+        .pm-trow:hover { background: #FAFBFC; }
+        .pm-icon { background: transparent; border: none; cursor: pointer; padding: 4px; }
+        .pm-icon.del { color: ${T.late}; }
+        .pm-in { width: 100%; border: 1px solid ${T.border}; border-radius: 6px; padding: 8px; font-family: inherit; font-size: 13px; }
+        .pm-range { cursor: pointer; }
+        .pm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: grid; place-items: center; z-index: 100; }
+        .pm-modal { background: #fff; border-radius: 12px; padding: 20px; width: 420px; max-width: 90vw; }
+        .pm-x { background: transparent; border: none; cursor: pointer; font-size: 14px; color: ${T.sub}; }
+        .pm-reset { background: transparent; border: none; color: ${T.sidebarSub}; cursor: pointer; font-size: 11px; }
+        `}</style>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<App />);
+  </script>
+</body>
+</html>

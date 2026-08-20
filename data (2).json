@@ -1,0 +1,173 @@
+[
+  {
+    "id": "prj1",
+    "name": "Pengembangan KRI Premises Management",
+    "code": "KRI-PM",
+    "owner": "Edo",
+    "category": "Risk Management",
+    "tasks": [
+      {
+        "id": "t1",
+        "name": "Finalisasi Excel Workbook KRI (RAG formula)",
+        "pic": "Edo",
+        "priority": "P1",
+        "start": "2026-08-01",
+        "due": "2026-08-15",
+        "progress": 80
+      },
+      {
+        "id": "t2",
+        "name": "Kalibrasi threshold vs risk appetite internal",
+        "pic": "Edo",
+        "priority": "P1",
+        "start": "2026-08-10",
+        "due": "2026-08-22",
+        "progress": 70
+      }
+    ]
+  },
+  {
+    "id": "prj2",
+    "name": "Fit-out Lantai 19 & 21",
+    "code": "FITOUT",
+    "owner": "Edo",
+    "category": "Premises",
+    "tasks": [
+      {
+        "id": "t3",
+        "name": "Dokumentasi kondisi eksisting Lantai 19",
+        "pic": "Edo",
+        "priority": "P2",
+        "start": "2026-07-20",
+        "due": "2026-08-05",
+        "progress": 100
+      }
+    ]
+  },
+  {
+    "name": "banyuwangi ",
+    "code": "byns",
+    "category": "",
+    "owner": "",
+    "id": "gw1mij8",
+    "tasks": [
+      {
+        "id": "72f4a9o",
+        "name": "memo",
+        "pic": "yudi",
+        "priority": "P2",
+        "start": "",
+        "due": "",
+        "progress": 100
+      },
+      {
+        "id": "2eqo9rc",
+        "name": "layput",
+        "pic": "yudi ",
+        "priority": "P2",
+        "start": "",
+        "due": "",
+        "progress": 100
+      }
+    ]
+  },
+  {
+    "name": "tes ",
+    "code": "tes ",
+    "category": "",
+    "owner": "",
+    "id": "rnfgqsh",
+    "tasks": [
+      {
+        "id": "uefrc3j",
+        "name": "ok ",
+        "pic": "nbj",
+        "priority": "P2",
+        "start": "",
+        "due": "",
+        "progress": 40
+      }
+    ]
+  },
+  {
+    "name": "",
+    "code": "",
+    "category": "Premises",
+    "owner": "",
+    "id": "w7q6u0f",
+    "tasks": [
+      {
+        "id": "dqot3tx",
+        "name": "",
+        "pic": "",
+        "priority": "P2",
+        "start": "",
+        "due": "",
+        "progress": 0
+      }
+    ]
+  },
+  {
+    "name": "KC ACEH ",
+    "code": "Fitout ",
+    "category": "Project ",
+    "owner": "",
+    "id": "skayu2s",
+    "tasks": [
+      {
+        "id": "2ai4rwh",
+        "name": "Pra Implementas",
+        "pic": "Nurwahyu",
+        "priority": "P2",
+        "start": "2026-08-18",
+        "due": "2026-08-28",
+        "progress": 80
+      }
+    ]
+  },
+  {
+    "name": "KC Semarang ",
+    "code": "reloaksi ",
+    "category": "Project Managemt ",
+    "owner": "",
+    "id": "6my654x",
+    "tasks": [
+      {
+        "id": "iezpgb8",
+        "name": "Memo ",
+        "pic": "Jony",
+        "priority": "P3",
+        "start": "2026-08-19",
+        "due": "2026-08-28",
+        "progress": 100
+      },
+      {
+        "id": "0cog91z",
+        "name": "layuty ",
+        "pic": "yudi",
+        "priority": "P2",
+        "start": "2026-08-20",
+        "due": "2026-08-27",
+        "progress": 65
+      }
+    ]
+  },
+  {
+    "name": "jfkldfo ",
+    "code": "b hjkcbsa",
+    "category": "Premises",
+    "owner": "",
+    "id": "t1h8447",
+    "tasks": [
+      {
+        "id": "txhxl91",
+        "name": "casjkcb",
+        "pic": "csavc",
+        "priority": "P2",
+        "start": "2026-08-27",
+        "due": "2026-09-05",
+        "progress": 0
+      }
+    ]
+  }
+]
