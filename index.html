@@ -123,75 +123,48 @@
       const [modal, setModal] = useState(null);
 
       // State Native File System API
-      const [fileHandle, setFileHandle] = useState(null);
+
       const [fileName, setFileName] = useState("");
       const [isModified, setIsModified] = useState(false);
 
       // Buka & Hubungkan ke file data.json di Shared Folder
       const openJsonFile = async () => {
         try {
-          if (!window.showOpenFilePicker) {
-            alert("Browser Anda tidak mendukung Native File System API. Gunakan Google Chrome atau Microsoft Edge terbaru.");
-            return;
+          
+          const response = await fetch('./data.json');
+         
+        if (!response.ok) {
+            throw new Error('Tidak dapat membaca data.json');
           }
-          const [handle] = await window.showOpenFilePicker({
-            types: [{
-              description: 'JSON File',
-              accept: { 'application/json': ['.json'] }
-            }],
-            multiple: false
-          });
-
-          const file = await handle.getFile();
-          const contents = await file.text();
-          const data = JSON.parse(contents);
-
-          setFileHandle(handle);
-          setFileName(file.name);
+      
+          const data = await response.json();
+          
           setProjects(data);
+          setFileName('data.json');
           setIsModified(false);
+    
         } catch (err) {
-          if (err.name !== 'AbortError') {
-            alert("Gagal membuka file: " + err.message);
-          }
+
+          console.error(err);
+  
+         alert('Gagal membaca data.json: ' + err.message);
+        
         }
       };
 
       // Overwrite / Simpan Langsung ke file data.json
-      const saveDirectToFile = async (currentProjects = projects) => {
-        if (!fileHandle) {
-          alert("Silakan hubungkan file data.json terlebih dahulu.");
-          return;
-        }
-        try {
-          const writable = await fileHandle.createWritable();
-          await writable.write(JSON.stringify(currentProjects, null, 2));
-          await writable.close();
-          setIsModified(false);
-          alert("✅ Data berhasil diperbarui langsung ke " + fileName);
-        } catch (err) {
-          alert("❌ Gagal menyimpan file: " + err.message + "\nPastikan file tidak sedang dibuka/dikunci aplikasi lain.");
-        }
-      };
 
       // Reload File
-      const reloadFile = async () => {
-        if (!fileHandle) return;
-        try {
-          const file = await fileHandle.getFile();
-          const contents = await file.text();
-          setProjects(JSON.parse(contents));
-          setIsModified(false);
-        } catch (err) {
-          alert("Gagal memuat ulang file: " + err.message);
-        }
-      };
 
       const persist = (next) => {
         setProjects(next);
         setIsModified(true);
       };
 
+      React.useEffect(() => {
+        openJsonFile();
+        }, []);
+      
       const stats = useMemo(() => {
         if (!projects) return null;
         const tasks = projects.flatMap((p) => p.tasks.map((t) => ({ ...t, _pName: p.name, _pCode: p.code, _pid: p.id, _s: taskStatus(t) })));
@@ -265,15 +238,18 @@
 
             {/* KONTROL FILE */}
             <div style={{ marginTop: "auto", padding: 14, borderTop: "1px solid rgba(255,255,255,.1)", display: "grid", gap: 8 }}>
-              {fileHandle ? (
+             {projects.length > 0 ? (
                 <>
                   <div style={{ color: "#4ADE80", fontSize: 11, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     📄 {fileName} {isModified && <span style={{ color: "#FBBF24" }}>(perlu disimpan)</span>}
                   </div>
-                  <button className="pm-btn primary" style={{ width: "100%", fontSize: 12, background: isModified ? "#D97706" : "#1F4BD8" }} onClick={() => saveDirectToFile()}>
-                    💾 Overwrite / Simpan
+                <button
+                  className="pm-btn primary"
+                  style={{ width: "100%", fontSize: 12 }}
+                  onClick={openJsonFile}
+                  >
+                  🔄 Muat Ulang Data
                   </button>
-                  <button className="pm-reset" onClick={reloadFile}>🔄 Reload File</button>
                 </>
               ) : (
                 <button className="pm-btn primary" style={{ width: "100%", fontSize: 12 }} onClick={openJsonFile}>
@@ -285,7 +261,7 @@
 
           {/* AREA UTAMA */}
           <main style={{ flex: 1, minWidth: 0, padding: "26px 30px 60px" }}>
-            {!fileHandle && projects.length === 0 ? (
+           {projects.length === 0 ? (
               <div style={{ background: "#fff", border: `1px solid ${T.border}`, borderRadius: 12, padding: 40, textAlign: "center", marginTop: 40 }}>
                 <h2 style={{ marginTop: 0 }}>Selamat Datang di Portfolio Control</h2>
                 <p style={{ color: T.sub, maxWidth: 480, margin: "0 auto 20px" }}>
